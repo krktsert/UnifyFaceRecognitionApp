@@ -1,34 +1,18 @@
 package com.unify.assignment.unifyfacerecognitionapp;
 
 
-import android.graphics.BitmapFactory;
 import android.hardware.Camera;
-import android.os.AsyncTask;
+import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
-
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.Queue;
-
-import javax.crypto.Cipher;
-import javax.crypto.CipherInputStream;
-import javax.crypto.NoSuchPaddingException;
-import javax.crypto.spec.SecretKeySpec;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -39,7 +23,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean inPreview=false;
     private boolean cameraConfigured=false;
 
-    public int imageCount = -1;
+    private Handler mHandler = new Handler();
+
+    Encryption mEncryption = new Encryption();
+
+    public int imageCount = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,36 +54,53 @@ public class MainActivity extends AppCompatActivity {
         snapButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                //
-                imageCount++;
-                myCamera.takePicture(null, null, pictureCallback);
+                mHandler.post(mRunnable);
             }
         });
     }
 
+    private Runnable mRunnable = new Runnable() {
 
-    Camera.PictureCallback pictureCallback = new Camera.PictureCallback() {
         @Override
-        public void onPictureTaken(byte[] bytes, Camera camera) {
+        public void run() {
+            myCamera.takePicture(null, null, new Camera.PictureCallback() {
+                        @Override
+                        public void onPictureTaken(byte[] bytes, Camera camera) {
+                            if(imageCount < 10) {
+                                Log.i("pictureCallback", "inside" + imageCount);
 
-            byte[] counter = ByteBuffer.allocate(4).putInt(1695609641).array();
-            new SaveImageTask().execute(bytes, counter);
+                                String s = new String(bytes);
+                                byte[] encData = null;
+                                try {
+                                    encData = mEncryption.Encrypt(s);
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
 
-            /*
-            FileOutputStream outStream = null;
-            try {
-                // Write to SD Card
+                                try {
 
-                outStream = new FileOutputStream(String.format(Environment.getExternalStorageDirectory().getPath()+"/TEST"+imageCount+".jpg"));
-                outStream.write(bytes);
-                outStream.close();
-            } catch (FileNotFoundException e) { // <10>
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
+                                    FileOutputStream outStream = new FileOutputStream(String.format(Environment.getExternalStorageDirectory().getPath() + "/TEST" + imageCount + ".enc"));
+                                    outStream.write(encData);
+                                    outStream.close();
+
+                                    imageCount++;
+
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+
+                            camera.startPreview();
+                        }
+                    });
+
+            Log.i("mRUNNABLE", "ImageCount:" + imageCount);
+
+            if(imageCount < 10) {
+                mHandler.postDelayed(mRunnable, 500);
+            }else{
+                Toast.makeText(MainActivity.this, "10 pictures taken.", Toast.LENGTH_SHORT).show();
             }
-            camera.startPreview();
-            */
         }
     };
 
@@ -106,8 +111,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private Camera.Size getBestPreviewSize(int width, int height,
-                                           Camera.Parameters parameters) {
+    private Camera.Size getBestPreviewSize(int width, int height, Camera.Parameters parameters) {
         Camera.Size result=null;
 
         for (Camera.Size size : parameters.getSupportedPreviewSizes()) {
@@ -175,55 +179,4 @@ public class MainActivity extends AppCompatActivity {
             // no-op
         }
     };
-}
-
-
-class SaveImageTask extends AsyncTask<byte[], Void, Void> {
-
-    byte[] keyBytes = new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
-            0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17 }; //Choose a key wisely
-
-
-
-    int count = 0;
-    @Override
-    protected Void doInBackground(byte[]... data) {
-        count ++;
-
-        // Write to SD Card
-        try {
-            SecretKeySpec key = new SecretKeySpec(keyBytes, "AES");
-
-            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            FileOutputStream outStream = null;
-            //count = data[1].;
-
-            outStream = new FileOutputStream(String.format(Environment.getExternalStorageDirectory().getPath() + "/TEST" + count + ".jpg"));
-            outStream.write(data[0]);
-            outStream.close();
-
-            FileInputStream fis = new FileInputStream(Environment.getExternalStorageDirectory().getPath() + "/TEST" + count + ".jpg");
-            CipherInputStream cis = new CipherInputStream(fis, cipher);
-            FileOutputStream fos = new FileOutputStream(Environment.getExternalStorageDirectory().getPath() + "/encTEST" + count + ".enc");
-            byte[] b = new byte[8];
-            int i = cis.read(b);
-            while (i != -1) {
-                fos.write(b, 0, i);
-                i = cis.read(b);
-            }
-            fos.close();
-
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (NoSuchPaddingException e) {
-            e.printStackTrace();
-        } finally {
-        }
-        return null;
-    }
-
 }
